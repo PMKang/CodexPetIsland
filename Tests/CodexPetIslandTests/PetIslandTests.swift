@@ -4,6 +4,23 @@ import XCTest
 @testable import CodexPetIsland
 
 final class PetIslandTests: XCTestCase {
+    func testTaskRunningUsesOfficialProcessingAnimationRow() {
+        XCTAssertEqual(PetAnimationState.taskRunning.spriteRow, 7)
+        XCTAssertEqual(PetAnimationState.taskRunning.frameCount, 6)
+    }
+
+    func testIdleDoesNotReadTheFirstUnusedTransparentCell() {
+        XCTAssertEqual(PetAnimationState.idle.spriteRow, 0)
+        XCTAssertEqual(PetAnimationState.idle.frameCount, 6)
+    }
+
+    func testDraggingAnimationsRemainDirectional() {
+        XCTAssertEqual(PetAnimationState.runningRight.spriteRow, 1)
+        XCTAssertEqual(PetAnimationState.runningLeft.spriteRow, 2)
+        XCTAssertEqual(PetAnimationState.runningRight.frameCount, 8)
+        XCTAssertEqual(PetAnimationState.runningLeft.frameCount, 8)
+    }
+
     func testThreeHundredPercentSizesRemainFinite() {
         let floating = PetIslandPlacement.size(
             expanded: false,

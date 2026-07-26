@@ -5,6 +5,30 @@ enum PetAnimationState: Equatable {
     case idle
     case runningLeft
     case runningRight
+    case taskRunning
+
+    var spriteRow: Int {
+        switch self {
+        case .idle: 0
+        case .runningRight: 1
+        case .runningLeft: 2
+        case .taskRunning: 7
+        }
+    }
+
+    var frameCount: Int {
+        switch self {
+        case .idle, .taskRunning: 6
+        case .runningLeft, .runningRight: 8
+        }
+    }
+
+    var frameInterval: TimeInterval {
+        switch self {
+        case .idle: 0.28
+        case .runningLeft, .runningRight, .taskRunning: 0.12
+        }
+    }
 }
 
 struct PetSpriteView: View {
@@ -21,12 +45,13 @@ struct PetSpriteView: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: frameInterval)) { context in
+        TimelineView(.periodic(from: .now, by: state.frameInterval)) { context in
             if let image {
                 let tick = Int(
-                    context.date.timeIntervalSinceReferenceDate / frameInterval
+                    context.date.timeIntervalSinceReferenceDate
+                        / state.frameInterval
                 )
-                spriteSheet(image, frame: tick % frameCount)
+                spriteSheet(image, frame: tick % state.frameCount)
             } else {
                 Image(systemName: "pawprint.fill")
                     .resizable()
@@ -50,25 +75,9 @@ struct PetSpriteView: View {
                 )
                 .offset(
                     x: -CGFloat(frame) * proxy.size.width,
-                    y: -CGFloat(row) * proxy.size.height
+                    y: -CGFloat(state.spriteRow) * proxy.size.height
                 )
         }
         .clipped()
-    }
-
-    private var row: Int {
-        switch state {
-        case .idle: 0
-        case .runningRight: 1
-        case .runningLeft: 2
-        }
-    }
-
-    private var frameCount: Int {
-        state == .idle ? 7 : 8
-    }
-
-    private var frameInterval: TimeInterval {
-        state == .idle ? 0.55 : 0.15
     }
 }
