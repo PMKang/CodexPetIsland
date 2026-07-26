@@ -89,6 +89,7 @@ final class LocalCodexReader: @unchecked Sendable {
         var latestTitle: String?
         var totalTokens: Int64 = 0
         var quota: (Date, QuotaSnapshot)?
+        var lifecycleRunning: Bool?
 
         for line in text.split(whereSeparator: \.isNewline) {
             guard let data = String(line).data(using: .utf8),
@@ -119,6 +120,9 @@ final class LocalCodexReader: @unchecked Sendable {
                     quota = (timestamp, candidate)
                 }
             }
+            if let running = extractLifecycleRunning(dictionary) {
+                lifecycleRunning = running
+            }
         }
 
         let id = sessionID ?? file.deletingPathExtension().lastPathComponent
@@ -128,7 +132,8 @@ final class LocalCodexReader: @unchecked Sendable {
         let title = names[id]
             ?? latestTitle?.singleLine(maximumLength: 44)
             ?? file.deletingPathExtension().lastPathComponent
-        let running = now().timeIntervalSince(modifiedAt) <= 90
+        let running = lifecycleRunning
+            ?? (now().timeIntervalSince(modifiedAt) <= 90)
 
         return (
             PetTask(
@@ -141,6 +146,25 @@ final class LocalCodexReader: @unchecked Sendable {
             ),
             quota
         )
+    }
+
+    private func extractLifecycleRunning(
+        _ dictionary: [String: Any]
+    ) -> Bool? {
+        guard dictionary["type"] as? String == "event_msg",
+              let payload = dictionary["payload"] as? [String: Any],
+              let type = payload["type"] as? String
+        else {
+            return nil
+        }
+        switch type {
+        case "task_started":
+            return true
+        case "task_complete", "turn_aborted":
+            return false
+        default:
+            return nil
+        }
     }
 
     private func readTail(_ url: URL, maximumBytes: Int) -> Data? {

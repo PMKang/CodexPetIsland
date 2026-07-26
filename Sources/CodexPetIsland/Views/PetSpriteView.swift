@@ -7,6 +7,20 @@ enum PetAnimationState: Equatable {
     case runningRight
     case taskRunning
 
+    static func resolve(
+        hasRunningTasks: Bool,
+        isDragging: Bool,
+        direction: PetDockEdge
+    ) -> Self {
+        if hasRunningTasks {
+            return .taskRunning
+        }
+        if isDragging {
+            return direction == .left ? .runningLeft : .runningRight
+        }
+        return .idle
+    }
+
     var spriteRow: Int {
         switch self {
         case .idle: 0

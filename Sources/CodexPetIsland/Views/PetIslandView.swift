@@ -300,10 +300,11 @@ struct PetIslandView: View {
     }
 
     private var animationState: PetAnimationState {
-        if dragging {
-            return direction == .left ? .runningLeft : .runningRight
-        }
-        return runningTasks.isEmpty ? .idle : .taskRunning
+        PetAnimationState.resolve(
+            hasRunningTasks: !runningTasks.isEmpty,
+            isDragging: dragging,
+            direction: direction
+        )
     }
 
     private func dragCapture(docked: Bool) -> some View {
