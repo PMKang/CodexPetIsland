@@ -6,6 +6,8 @@ struct CodexPet: Identifiable, Equatable, Sendable {
     let displayName: String
     let spriteVersionNumber: Int
     let spritesheetURL: URL
+    let subagentFormURL: URL?
+    let subagentScaleMultiplier: Double
     let manifestModifiedAt: Date
 
     var isCanonicalPackage: Bool {
@@ -20,6 +22,7 @@ struct PetTask: Identifiable, Equatable, Sendable {
     let totalTokens: Int64
     let updatedAt: Date
     let isRunning: Bool
+    let isSubagent: Bool
 }
 
 struct QuotaSnapshot: Equatable, Sendable {
@@ -32,6 +35,14 @@ struct PetDashboardSnapshot: Equatable, Sendable {
     var quota: QuotaSnapshot?
     var tasks: [PetTask]
     var refreshedAt: Date
+
+    var hasRunningTasks: Bool {
+        tasks.contains(where: \.isRunning)
+    }
+
+    var hasRunningSubagents: Bool {
+        tasks.contains { $0.isRunning && $0.isSubagent }
+    }
 
     static let empty = PetDashboardSnapshot(
         quota: nil,

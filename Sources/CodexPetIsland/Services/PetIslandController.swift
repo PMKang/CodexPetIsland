@@ -11,6 +11,14 @@ struct PetIslandPlacement {
     static let baseFloating = NSSize(width: 324, height: 132)
     static let baseExpanded = NSSize(width: 410, height: 380)
     static let baseDocked = NSSize(width: 104, height: 112)
+    static func visualScale(
+        baseScale: CGFloat,
+        subagentScaleMultiplier: Double?,
+        docked: Bool
+    ) -> CGFloat {
+        guard let subagentScaleMultiplier, !docked else { return baseScale }
+        return baseScale * CGFloat(subagentScaleMultiplier)
+    }
 
     static func petControlSize(scale: CGFloat) -> CGFloat {
         78 * scale
@@ -29,7 +37,10 @@ struct PetIslandPlacement {
         }
         if expanded {
             return NSSize(
-                width: baseExpanded.width,
+                width: max(
+                    baseExpanded.width,
+                    petControlSize(scale: scale) + 20
+                ),
                 height: max(
                     baseExpanded.height,
                     petControlSize(scale: scale) + 302
@@ -37,7 +48,10 @@ struct PetIslandPlacement {
             )
         }
         return NSSize(
-            width: baseFloating.width,
+            width: max(
+                baseFloating.width,
+                petControlSize(scale: scale) + 14
+            ),
             height: max(
                 baseFloating.height,
                 petControlSize(scale: scale) + 54
@@ -58,6 +72,7 @@ final class PetIslandController: NSObject {
     private var screenNumber: NSNumber?
     private var dragStartFrame: NSRect?
     private var dragging = false
+    private var subagentScaleMultiplier: Double?
     private var cancellables: Set<AnyCancellable> = []
 
     init(store: PetDashboardStore, preferences: PetPreferences) {
@@ -94,7 +109,9 @@ final class PetIslandController: NSObject {
     private func observe() {
         preferences.$isEnabled
             .removeDuplicates()
-            .sink { [weak self] _ in self?.update() }
+            .sink { [weak self] isEnabled in
+                self?.update(isEnabled: isEnabled)
+            }
             .store(in: &cancellables)
         preferences.$selectedPetID
             .removeDuplicates()
@@ -107,7 +124,20 @@ final class PetIslandController: NSObject {
         preferences.$scalePercent
             .removeDuplicates()
             .dropFirst()
-            .sink { [weak self] _ in self?.scaleDidChange() }
+            .sink { [weak self] scalePercent in
+                self?.scaleDidChange(to: scalePercent)
+            }
+            .store(in: &cancellables)
+        store.$snapshot
+            .combineLatest(preferences.$selectedPetID)
+            .map { [weak preferences] snapshot, _ -> Double? in
+                guard snapshot.hasRunningSubagents else { return nil }
+                return preferences?.selectedPet?.subagentScaleMultiplier
+            }
+            .removeDuplicates()
+            .sink { [weak self] multiplier in
+                self?.subagentScaleDidChange(multiplier)
+            }
             .store(in: &cancellables)
 
         NotificationCenter.default.addObserver(
@@ -123,11 +153,37 @@ final class PetIslandController: NSObject {
         update()
     }
 
-    private func scaleDidChange() {
+    private func scaleDidChange(to scalePercent: Double) {
+        resizePanel(baseScale: CGFloat(scalePercent / 100))
+    }
+
+    private func subagentScaleDidChange(_ multiplier: Double?) {
+        guard subagentScaleMultiplier != multiplier else { return }
+        subagentScaleMultiplier = multiplier
+        resizePanel(baseScale: scale)
+    }
+
+    private func resizePanel(baseScale: CGFloat) {
         let anchor = NSPoint(x: panel.frame.maxX, y: panel.frame.maxY)
-        let size = currentSize
+        let visualScale = PetIslandPlacement.visualScale(
+            baseScale: baseScale,
+            subagentScaleMultiplier: subagentScaleMultiplier,
+            docked: dockEdge != nil
+        )
+        let size = PetIslandPlacement.size(
+            expanded: expanded,
+            docked: dockEdge != nil,
+            scale: visualScale
+        )
         origin = NSPoint(x: anchor.x - size.width, y: anchor.y - size.height)
-        update(animate: false)
+        guard preferences.isEnabled, let screen = preferredScreen() else {
+            return
+        }
+        panel.setFrame(
+            presentationFrame(on: screen, size: size),
+            display: true,
+            animate: false
+        )
     }
 
     private func toggleExpanded() {
@@ -143,8 +199,13 @@ final class PetIslandController: NSObject {
         update()
     }
 
-    private func update(animate: Bool = true) {
-        guard preferences.isEnabled, let screen = preferredScreen() else {
+    private func update(
+        animate: Bool = true,
+        isEnabled: Bool? = nil
+    ) {
+        guard isEnabled ?? preferences.isEnabled,
+              let screen = preferredScreen()
+        else {
             panel.orderOut(nil)
             return
         }
@@ -167,9 +228,12 @@ final class PetIslandController: NSObject {
         panel.orderFrontRegardless()
     }
 
-    private func presentationFrame(on screen: NSScreen) -> NSRect {
+    private func presentationFrame(
+        on screen: NSScreen,
+        size proposedSize: NSSize? = nil
+    ) -> NSRect {
         let visible = screen.visibleFrame
-        let size = currentSize
+        let size = proposedSize ?? currentSize
         if let dockEdge {
             let y = min(
                 visible.maxY - size.height,
@@ -269,10 +333,15 @@ final class PetIslandController: NSObject {
     }
 
     private var currentSize: NSSize {
-        PetIslandPlacement.size(
+        let visualScale = PetIslandPlacement.visualScale(
+            baseScale: scale,
+            subagentScaleMultiplier: subagentScaleMultiplier,
+            docked: dockEdge != nil
+        )
+        return PetIslandPlacement.size(
             expanded: expanded,
             docked: dockEdge != nil,
-            scale: scale
+            scale: visualScale
         )
     }
 

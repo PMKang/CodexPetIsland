@@ -16,12 +16,26 @@ struct PetIslandView: View {
     @State private var direction: PetDockEdge = .right
     @State private var dragging = false
 
-    private var scale: CGFloat {
+    private var baseScale: CGFloat {
         CGFloat(preferences.scalePercent / 100)
     }
 
     private var runningTasks: [PetTask] {
         store.snapshot.tasks.filter(\.isRunning)
+    }
+
+    private var scale: CGFloat {
+        PetIslandPlacement.visualScale(
+            baseScale: baseScale,
+            subagentScaleMultiplier: hasRunningSubagents
+                ? preferences.selectedPet?.subagentScaleMultiplier
+                : nil,
+            docked: isDocked
+        )
+    }
+
+    private var hasRunningSubagents: Bool {
+        store.snapshot.hasRunningSubagents
     }
 
     private var size: CGSize {
@@ -85,7 +99,7 @@ struct PetIslandView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
                 HStack(spacing: 8) {
-                    Text("7d \(percentText)")
+                    Text("\(countdownText) \(percentText)")
                     Label(
                         "\(runningTasks.count)",
                         systemImage: runningTasks.isEmpty
@@ -145,7 +159,7 @@ struct PetIslandView: View {
             taskList
             Divider()
             HStack(spacing: 8) {
-                metric(label: "7d", value: percentText)
+                metric(label: countdownText, value: percentText)
                 metric(
                     label: text("Running", "运行中"),
                     value: "\(runningTasks.count)"
@@ -289,7 +303,11 @@ struct PetIslandView: View {
     @ViewBuilder
     private var pet: some View {
         if let selected = preferences.selectedPet {
-            PetSpriteView(pet: selected, state: animationState)
+            PetSpriteView(
+                pet: selected,
+                state: animationState,
+                showsSubagentForm: hasRunningSubagents
+            )
         } else {
             Image(systemName: "pawprint.fill")
                 .resizable()

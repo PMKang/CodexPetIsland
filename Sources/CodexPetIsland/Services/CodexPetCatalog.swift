@@ -78,6 +78,17 @@ struct CodexPetCatalog {
         else {
             return nil
         }
+        let subagentFormURL: URL? = manifest.subagentFormPath.flatMap {
+            let url = directoryURL
+                .appendingPathComponent($0)
+                .standardizedFileURL
+            guard url.path.hasPrefix(directoryURL.path + "/"),
+                  fileManager.fileExists(atPath: url.path)
+            else {
+                return nil
+            }
+            return url
+        }
         let modifiedAt = (try? manifestURL.resourceValues(
             forKeys: [.contentModificationDateKey]
         ).contentModificationDate) ?? .distantPast
@@ -88,6 +99,11 @@ struct CodexPetCatalog {
                 ?? directory.lastPathComponent,
             spriteVersionNumber: manifest.spriteVersionNumber,
             spritesheetURL: spriteURL,
+            subagentFormURL: subagentFormURL,
+            subagentScaleMultiplier: min(
+                3,
+                max(1, manifest.subagentScaleMultiplier ?? 1.5)
+            ),
             manifestModifiedAt: modifiedAt
         )
     }
@@ -98,12 +114,16 @@ private struct CodexPetManifest: Decodable {
     let displayName: String?
     let spriteVersionNumber: Int
     let spritesheetPath: String
+    let subagentFormPath: String?
+    let subagentScaleMultiplier: Double?
 
     private enum CodingKeys: String, CodingKey {
         case id
         case displayName
         case spriteVersionNumber
         case spritesheetPath
+        case subagentFormPath
+        case subagentScaleMultiplier
     }
 
     init(from decoder: Decoder) throws {
@@ -121,6 +141,14 @@ private struct CodexPetManifest: Decodable {
             String.self,
             forKey: .spritesheetPath
         ) ?? "spritesheet.webp"
+        subagentFormPath = try container.decodeIfPresent(
+            String.self,
+            forKey: .subagentFormPath
+        )
+        subagentScaleMultiplier = try container.decodeIfPresent(
+            Double.self,
+            forKey: .subagentScaleMultiplier
+        )
     }
 }
 

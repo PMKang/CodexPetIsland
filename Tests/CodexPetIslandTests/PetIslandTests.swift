@@ -21,23 +21,24 @@ final class PetIslandTests: XCTestCase {
         XCTAssertEqual(PetAnimationState.runningLeft.frameCount, 8)
     }
 
-    func testRunningTaskKeepsSuperFormWhileDragging() {
-        XCTAssertEqual(
-            PetAnimationState.resolve(
-                hasRunningTasks: true,
-                isDragging: true,
-                direction: .left
-            ),
-            .taskRunning
+    func testRunningTaskKeepsProcessingFormWhileDragging() {
+        let left = PetAnimationState.resolve(
+            hasRunningTasks: true,
+            isDragging: true,
+            direction: .left
         )
-        XCTAssertEqual(
-            PetAnimationState.resolve(
-                hasRunningTasks: true,
-                isDragging: true,
-                direction: .right
-            ),
-            .taskRunning
+        let right = PetAnimationState.resolve(
+            hasRunningTasks: true,
+            isDragging: true,
+            direction: .right
         )
+
+        XCTAssertEqual(left, .taskRunningLeft)
+        XCTAssertEqual(right, .taskRunningRight)
+        XCTAssertEqual(left.spriteRow, 7)
+        XCTAssertEqual(right.spriteRow, 7)
+        XCTAssertEqual(left.taskRunningDirection, .left)
+        XCTAssertEqual(right.taskRunningDirection, .right)
     }
 
     func testThreeHundredPercentSizesRemainFinite() {
@@ -60,6 +61,41 @@ final class PetIslandTests: XCTestCase {
         XCTAssertEqual(floating, NSSize(width: 324, height: 288))
         XCTAssertEqual(expanded, NSSize(width: 410, height: 536))
         XCTAssertEqual(docked, NSSize(width: 312, height: 336))
+    }
+
+    func testConfiguredSubagentFormScalesWithoutChangingDockedSize() {
+        XCTAssertEqual(
+            PetIslandPlacement.visualScale(
+                baseScale: 1,
+                subagentScaleMultiplier: 1.5,
+                docked: false
+            ),
+            1.5
+        )
+        XCTAssertEqual(
+            PetIslandPlacement.visualScale(
+                baseScale: 3,
+                subagentScaleMultiplier: 1.5,
+                docked: false
+            ),
+            4.5
+        )
+        XCTAssertEqual(
+            PetIslandPlacement.visualScale(
+                baseScale: 3,
+                subagentScaleMultiplier: 1.5,
+                docked: true
+            ),
+            3
+        )
+        XCTAssertEqual(
+            PetIslandPlacement.visualScale(
+                baseScale: 1,
+                subagentScaleMultiplier: nil,
+                docked: false
+            ),
+            1
+        )
     }
 
     func testReadsSelectedCustomPetID() throws {
@@ -109,6 +145,39 @@ final class PetIslandTests: XCTestCase {
         XCTAssertEqual(snapshot.quota?.label, "7d")
     }
 
+    func testAdditionalModelQuotaDoesNotReplaceMainCodexQuota() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codex-reader-\(UUID().uuidString)")
+        let sessions = root.appendingPathComponent("sessions")
+        try FileManager.default.createDirectory(
+            at: sessions,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try Data(
+            """
+            {"timestamp":"2026-07-27T06:15:20.154Z","payload":{"rate_limits":{"limit_id":"codex","primary":{"used_percent":11,"window_minutes":10080,"resets_at":1785621106},"secondary":null}}}
+            """.utf8
+        ).write(to: sessions.appendingPathComponent("main-quota.jsonl"))
+        try Data(
+            """
+            {"timestamp":"2026-07-27T10:22:26.394Z","payload":{"rate_limits":{"limit_id":"codex_bengalfox","limit_name":"GPT-5.3-Codex-Spark","primary":{"used_percent":0,"window_minutes":10080,"resets_at":1785752532},"secondary":null}}}
+            """.utf8
+        ).write(to: sessions.appendingPathComponent("additional-quota.jsonl"))
+
+        let snapshot = LocalCodexReader(
+            codexDirectory: root,
+            now: { Date(timeIntervalSince1970: 1_785_136_501) }
+        ).read()
+
+        XCTAssertEqual(snapshot.quota?.remainingPercent, 89)
+        XCTAssertEqual(
+            snapshot.quota?.resetsAt,
+            Date(timeIntervalSince1970: 1_785_621_106)
+        )
+    }
+
     func testRecentCompletedTaskIsNotReportedAsRunning() throws {
         let root = try makeCodexDirectory(
             eventLines: [
@@ -143,6 +212,24 @@ final class PetIslandTests: XCTestCase {
         let snapshot = LocalCodexReader(codexDirectory: root).read()
 
         XCTAssertEqual(snapshot.tasks.first?.isRunning, true)
+    }
+
+    func testSubagentMetadataUsesIndependentFormTrigger() throws {
+        let root = try makeCodexDirectory(
+            eventLines: [
+                """
+                {"type":"session_meta","payload":{"session_id":"parent","id":"child","cwd":"/tmp/project","thread_source":"subagent","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}
+                """,
+                lifecycleEvent("task_started")
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let snapshot = LocalCodexReader(codexDirectory: root).read()
+
+        XCTAssertEqual(snapshot.tasks.first?.id, "child")
+        XCTAssertEqual(snapshot.tasks.first?.isSubagent, true)
+        XCTAssertEqual(snapshot.hasRunningSubagents, true)
     }
 
     private func makeCodexDirectory(eventLines: [String]) throws -> URL {

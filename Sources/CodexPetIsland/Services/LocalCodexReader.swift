@@ -78,11 +78,14 @@ final class LocalCodexReader: @unchecked Sendable {
             atPath: file.path
         ),
               let modifiedAt = attributes[.modificationDate] as? Date,
-              let data = readTail(file, maximumBytes: 1_048_576),
-              let text = String(data: data, encoding: .utf8)
+              let tailData = readTail(file, maximumBytes: 1_048_576),
+              let tailText = String(data: tailData, encoding: .utf8)
         else {
             return nil
         }
+        let headText = readHead(file, maximumBytes: 262_144)
+            .flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        let text = headText + "\n" + tailText
 
         var sessionID: String?
         var workingDirectory: String?
@@ -90,6 +93,7 @@ final class LocalCodexReader: @unchecked Sendable {
         var totalTokens: Int64 = 0
         var quota: (Date, QuotaSnapshot)?
         var lifecycleRunning: Bool?
+        var isSubagent = false
 
         for line in text.split(whereSeparator: \.isNewline) {
             guard let data = String(line).data(using: .utf8),
@@ -98,11 +102,17 @@ final class LocalCodexReader: @unchecked Sendable {
             else {
                 continue
             }
-            sessionID = sessionID ?? recursiveString(
-                keys: ["session_id", "id"],
-                in: dictionary,
-                requiringParentType: "session_meta"
-            )
+            if dictionary["type"] as? String == "session_meta",
+               let payload = dictionary["payload"] as? [String: Any] {
+                sessionID = sessionID
+                    ?? payload["id"] as? String
+                    ?? payload["session_id"] as? String
+                workingDirectory = workingDirectory
+                    ?? payload["cwd"] as? String
+                isSubagent = isSubagent
+                    || payload["thread_source"] as? String == "subagent"
+                    || findDictionary(named: "subagent", in: payload) != nil
+            }
             workingDirectory = workingDirectory
                 ?? recursiveString(keys: ["cwd"], in: dictionary)
             if let title = extractUserText(dictionary), !title.isEmpty {
@@ -142,7 +152,8 @@ final class LocalCodexReader: @unchecked Sendable {
                 project: project,
                 totalTokens: totalTokens,
                 updatedAt: modifiedAt,
-                isRunning: running
+                isRunning: running,
+                isSubagent: isSubagent
             ),
             quota
         )
@@ -182,6 +193,14 @@ final class LocalCodexReader: @unchecked Sendable {
             data.removeSubrange(...newline)
         }
         return data
+    }
+
+    private func readHead(_ url: URL, maximumBytes: Int) -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return nil
+        }
+        defer { try? handle.close() }
+        return try? handle.read(upToCount: maximumBytes)
     }
 
     private func readSessionNames() -> [String: String] {
@@ -224,6 +243,14 @@ final class LocalCodexReader: @unchecked Sendable {
     private func extractQuota(_ dictionary: [String: Any]) -> QuotaSnapshot? {
         guard let limits = findDictionary(named: "rate_limits", in: dictionary)
         else {
+            return nil
+        }
+        // Codex can emit separate quota windows for individual models/features
+        // (for example `codex_bengalfox`). The island displays the account's
+        // main Codex allowance, so an add-on event must not replace it merely
+        // because that event is newer.
+        if let limitID = limits["limit_id"] as? String,
+           limitID != "codex" {
             return nil
         }
         let windows = ["secondary", "primary"].compactMap {

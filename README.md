@@ -10,6 +10,22 @@
 - 可拖动、多显示器、屏幕边缘吸附
 - 75%～300% 宠物缩放
 - 中英文界面
+- 可由宠物包声明独立的 subagent 形态
+
+## 可选 subagent 形态
+
+宠物包可以在 `pet.json` 中声明一张独立形态图片；应用不会按宠物名称
+写死外观。检测到运行中的 subagent 时才显示该资源，普通任务仍使用标准
+spritesheet 的 `running` 行。
+
+```json
+{
+  "subagentFormPath": "forms/subagent.png",
+  "subagentScaleMultiplier": 1.5
+}
+```
+
+`subagentFormPath` 必须指向当前宠物包目录内的透明 PNG/WebP。
 
 ## 隐私
 

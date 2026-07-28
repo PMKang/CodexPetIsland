@@ -51,14 +51,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let menu = statusItem?.menu else { return }
         menu.removeAllItems()
 
-        let show = NSMenuItem(
-            title: text("Show Pet Island", "显示宠物岛"),
+        let visibilityAction = NSMenuItem(
+            title: preferences.isEnabled
+                ? text("Hide Pet Island", "隐藏宠物岛")
+                : text("Show Pet Island", "显示宠物岛"),
             action: #selector(toggleEnabled),
             keyEquivalent: ""
         )
-        show.target = self
-        show.state = preferences.isEnabled ? .on : .off
-        menu.addItem(show)
+        visibilityAction.target = self
+        menu.addItem(visibilityAction)
 
         let follow = NSMenuItem(
             title: text("Follow Local Pet", "跟随本地宠物"),
