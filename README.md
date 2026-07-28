@@ -12,6 +12,19 @@
 - 中英文界面
 - 可由宠物包声明独立的 subagent 形态
 
+## 额度来源
+
+额度采用分层读取：
+
+1. 优先启动本机 Codex 自带的 `app-server`，调用官方
+   `account/rateLimits/read` RPC。
+2. 官方查询不可用时，比较最近一次成功结果的本地缓存与
+   `~/.codex/sessions` 中最新的 `rate_limits` 事件，采用仍有效且
+   更新的一份。
+
+应用启动和手动刷新时会查询官方额度，常驻期间每 5 分钟查询一次。
+会话文件变化只刷新任务和 Token 信息，不会高频启动 `app-server`。
+
 ## 可选 subagent 形态
 
 宠物包可以在 `pet.json` 中声明一张独立形态图片；应用不会按宠物名称
@@ -29,14 +42,16 @@ spritesheet 的 `running` 行。
 
 ## 隐私
 
-应用只读取：
+应用直接读取：
 
 - `~/.codex/config.toml`
 - `~/.codex/pets/*/pet.json`
 - `~/.codex/sessions/**/*.jsonl`
 - `~/.codex/session_index.jsonl`
 
-它不读取 `auth.json`，不上传提示词，不发起网络请求，也不修改宠物资源。
+应用不读取 `auth.json`，不上传提示词，也不修改宠物资源。额度查询通过
+本机 Codex 自带的 `app-server` 完成；宠物岛本身不读取或传递访问令牌，
+但 `app-server` 会使用 Codex 已有登录状态向其服务端刷新账户额度。
 
 ## 开发
 

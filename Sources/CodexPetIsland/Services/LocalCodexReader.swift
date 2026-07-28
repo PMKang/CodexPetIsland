@@ -127,7 +127,7 @@ final class LocalCodexReader: @unchecked Sendable {
             if let candidate = extractQuota(dictionary) {
                 let timestamp = eventTimestamp(dictionary) ?? modifiedAt
                 if quota == nil || timestamp > quota!.0 {
-                    quota = (timestamp, candidate)
+                    quota = (timestamp, candidate.fetched(at: timestamp))
                 }
             }
             if let running = extractLifecycleRunning(dictionary) {
@@ -269,7 +269,9 @@ final class LocalCodexReader: @unchecked Sendable {
         return QuotaSnapshot(
             label: "7d",
             remainingPercent: min(100, max(0, Int((100 - used).rounded()))),
-            resetsAt: resetDate
+            resetsAt: resetDate,
+            fetchedAt: now(),
+            source: .sessionLog
         )
     }
 

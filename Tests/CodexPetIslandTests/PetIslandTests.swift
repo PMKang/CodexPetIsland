@@ -178,6 +178,102 @@ final class PetIslandTests: XCTestCase {
         )
     }
 
+    func testAppServerSelectsMainCodexWeeklyWindow() throws {
+        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let quota = try CodexAppServerQuotaClient.parseRateLimitsResponse(
+            [
+                "rateLimitsByLimitId": [
+                    "codex_bengalfox": [
+                        "limitId": "codex_bengalfox",
+                        "primary": [
+                            "usedPercent": 0,
+                            "windowDurationMins": 10_080,
+                            "resetsAt": 1_800_500_000
+                        ]
+                    ],
+                    "codex": [
+                        "limitId": "codex",
+                        "primary": [
+                            "usedPercent": 6,
+                            "windowDurationMins": 10_080,
+                            "resetsAt": 1_800_500_000
+                        ],
+                        "secondary": NSNull()
+                    ]
+                ]
+            ],
+            now: fetchedAt
+        )
+
+        XCTAssertEqual(quota.label, "7d")
+        XCTAssertEqual(quota.remainingPercent, 94)
+        XCTAssertEqual(quota.source, .appServer)
+        XCTAssertEqual(quota.fetchedAt, fetchedAt)
+    }
+
+    func testAppServerClassifiesWindowsByDurationNotSlot() throws {
+        let quota = try CodexAppServerQuotaClient.parseRateLimitsResponse([
+            "rateLimits": [
+                "limitId": "codex",
+                "primary": [
+                    "usedPercent": 35,
+                    "windowDurationMins": 300,
+                    "resetsAt": 1_800_100_000
+                ],
+                "secondary": [
+                    "usedPercent": 12,
+                    "windowDurationMins": 10_080,
+                    "resetsAt": 1_800_500_000
+                ]
+            ]
+        ])
+
+        XCTAssertEqual(quota.label, "7d")
+        XCTAssertEqual(quota.remainingPercent, 88)
+        XCTAssertEqual(
+            quota.resetsAt,
+            Date(timeIntervalSince1970: 1_800_500_000)
+        )
+    }
+
+    func testQuotaCacheRejectsExpiredCycle() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codex-quota-cache-\(UUID().uuidString)")
+        let url = directory.appendingPathComponent("quota.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = CodexQuotaCache(url: url)
+        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        cache.save(QuotaSnapshot(
+            label: "7d",
+            remainingPercent: 50,
+            resetsAt: Date(timeIntervalSince1970: 1_800_010_000),
+            fetchedAt: fetchedAt,
+            source: .appServer
+        ))
+
+        XCTAssertEqual(
+            cache.load(now: fetchedAt.addingTimeInterval(60))?.source,
+            .cache
+        )
+        XCTAssertNil(
+            cache.load(now: Date(timeIntervalSince1970: 1_800_020_000))
+        )
+    }
+
+    func testLiveAppServerReturnsOfficialWeeklyQuota() throws {
+        guard ProcessInfo.processInfo.environment[
+            "CODEX_PET_ISLAND_LIVE_TEST"
+        ] == "1" else {
+            throw XCTSkip("Set CODEX_PET_ISLAND_LIVE_TEST=1 to query Codex")
+        }
+
+        let quota = try CodexAppServerQuotaClient(timeout: 12).fetchQuota()
+
+        XCTAssertEqual(quota.source, .appServer)
+        XCTAssertTrue((0 ... 100).contains(quota.remainingPercent))
+        XCTAssertFalse(quota.label.isEmpty)
+    }
+
     func testRecentCompletedTaskIsNotReportedAsRunning() throws {
         let root = try makeCodexDirectory(
             eventLines: [

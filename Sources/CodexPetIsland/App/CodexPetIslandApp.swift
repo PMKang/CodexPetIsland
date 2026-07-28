@@ -8,7 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var islandController: PetIslandController?
     private var statusItem: NSStatusItem?
     private var monitor: PathMonitor?
-    private var timer: Timer?
+    private var localTimer: Timer?
+    private var quotaTimer: Timer?
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -19,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         configureStatusItem()
         configureMonitoring()
-        store.refresh()
+        store.refreshAll(forceQuota: true)
 
         preferences.objectWillChange
             .sink { [weak self] _ in
@@ -137,18 +138,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             },
             onChange: { [weak self] in
                 self?.preferences.reloadLocalPet()
-                self?.store.refresh()
+                self?.store.refreshLocal()
             }
         )
         _ = monitor.start()
         self.monitor = monitor
 
-        let timer = Timer(timeInterval: 60, repeats: true) {
+        let localTimer = Timer(timeInterval: 60, repeats: true) {
             [weak self] _ in
-            Task { @MainActor in self?.store.refresh() }
+            Task { @MainActor in self?.store.refreshLocal() }
         }
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+        localTimer.tolerance = 10
+        RunLoop.main.add(localTimer, forMode: .common)
+        self.localTimer = localTimer
+
+        let quotaTimer = Timer(timeInterval: 5 * 60, repeats: true) {
+            [weak self] _ in
+            Task { @MainActor in self?.store.refreshQuota() }
+        }
+        quotaTimer.tolerance = 30
+        RunLoop.main.add(quotaTimer, forMode: .common)
+        self.quotaTimer = quotaTimer
     }
 
     @objc private func toggleEnabled() {
@@ -173,7 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func refresh() {
         preferences.reloadLocalPet()
-        store.refresh()
+        store.refreshAll(forceQuota: true)
     }
 
     @objc private func quit() {
