@@ -14,13 +14,10 @@
 
 ## 额度来源
 
-额度采用分层读取：
-
-1. 优先启动本机 Codex 自带的 `app-server`，调用官方
-   `account/rateLimits/read` RPC。
-2. 官方查询不可用时，比较最近一次成功结果的本地缓存与
-   `~/.codex/sessions` 中最新的 `rate_limits` 事件，采用仍有效且
-   更新的一份。
+额度只通过本机 Codex 自带的 `app-server` 查询，调用官方
+`account/rateLimits/read` RPC。不解析会话文件中的 `rate_limits`，
+也不把额度结果缓存到磁盘；官方查询失败时保留本次运行期间最后一次
+成功结果，应用重新启动后若仍无法查询则显示 `--`。
 
 应用启动和手动刷新时会查询官方额度，常驻期间每 5 分钟查询一次。
 会话文件变化只刷新任务和 Token 信息，不会高频启动 `app-server`。
@@ -60,3 +57,10 @@ spritesheet 的 `running` 行。
 ```
 
 要求 macOS 14 或更高版本以及 Swift 6 工具链。
+
+## 许可
+
+本项目以仓库中的 MIT License 发布。额度功能只通过 JSON-RPC 调用本机
+Codex 可执行文件，没有复制或打包 OpenAI Codex、CodexUsage、
+codex-touchbar-usage 或 TokenBar 的源码，因此仓库中不附带这些项目的
+版权声明。OpenAI Codex 本身采用 Apache-2.0，而不是 MIT。

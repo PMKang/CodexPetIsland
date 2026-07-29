@@ -115,71 +115,22 @@ final class PetIslandTests: XCTestCase {
         )
     }
 
-    func testUsesNewestRateLimitEventAcrossSessionFiles() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("codex-reader-\(UUID().uuidString)")
-        let sessions = root.appendingPathComponent("sessions")
-        try FileManager.default.createDirectory(
-            at: sessions,
-            withIntermediateDirectories: true
+    func testLocalReaderDoesNotUseSessionRateLimits() throws {
+        let root = try makeCodexDirectory(
+            eventLines: [
+                """
+                {"timestamp":"2026-07-29T10:00:00.000Z","payload":{"rate_limits":{"limit_id":"codex","primary":{"used_percent":42,"window_minutes":10080,"resets_at":1785752532}}}}
+                """
+            ]
         )
         defer { try? FileManager.default.removeItem(at: root) }
 
-        try Data(
-            """
-            {"timestamp":"2026-07-25T10:00:00.000Z","payload":{"rate_limits":{"primary":{"used_percent":10,"window_minutes":10080,"resets_at":1785275523},"secondary":null}}}
-            """.utf8
-        ).write(to: sessions.appendingPathComponent("newer-file.jsonl"))
-        try Data(
-            """
-            {"timestamp":"2026-07-26T10:00:00.000Z","payload":{"rate_limits":{"primary":{"used_percent":96,"window_minutes":10080,"resets_at":1785275523},"secondary":null}}}
-            """.utf8
-        ).write(to: sessions.appendingPathComponent("newer-event.jsonl"))
+        let snapshot = LocalCodexReader(codexDirectory: root).read()
 
-        let snapshot = LocalCodexReader(
-            codexDirectory: root,
-            now: { Date(timeIntervalSince1970: 1_785_000_000) }
-        ).read()
-
-        XCTAssertEqual(snapshot.quota?.remainingPercent, 4)
-        XCTAssertEqual(snapshot.quota?.label, "7d")
-    }
-
-    func testAdditionalModelQuotaDoesNotReplaceMainCodexQuota() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("codex-reader-\(UUID().uuidString)")
-        let sessions = root.appendingPathComponent("sessions")
-        try FileManager.default.createDirectory(
-            at: sessions,
-            withIntermediateDirectories: true
-        )
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        try Data(
-            """
-            {"timestamp":"2026-07-27T06:15:20.154Z","payload":{"rate_limits":{"limit_id":"codex","primary":{"used_percent":11,"window_minutes":10080,"resets_at":1785621106},"secondary":null}}}
-            """.utf8
-        ).write(to: sessions.appendingPathComponent("main-quota.jsonl"))
-        try Data(
-            """
-            {"timestamp":"2026-07-27T10:22:26.394Z","payload":{"rate_limits":{"limit_id":"codex_bengalfox","limit_name":"GPT-5.3-Codex-Spark","primary":{"used_percent":0,"window_minutes":10080,"resets_at":1785752532},"secondary":null}}}
-            """.utf8
-        ).write(to: sessions.appendingPathComponent("additional-quota.jsonl"))
-
-        let snapshot = LocalCodexReader(
-            codexDirectory: root,
-            now: { Date(timeIntervalSince1970: 1_785_136_501) }
-        ).read()
-
-        XCTAssertEqual(snapshot.quota?.remainingPercent, 89)
-        XCTAssertEqual(
-            snapshot.quota?.resetsAt,
-            Date(timeIntervalSince1970: 1_785_621_106)
-        )
+        XCTAssertNil(snapshot.quota)
     }
 
     func testAppServerSelectsMainCodexWeeklyWindow() throws {
-        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
         let quota = try CodexAppServerQuotaClient.parseRateLimitsResponse(
             [
                 "rateLimitsByLimitId": [
@@ -201,14 +152,11 @@ final class PetIslandTests: XCTestCase {
                         "secondary": NSNull()
                     ]
                 ]
-            ],
-            now: fetchedAt
+            ]
         )
 
         XCTAssertEqual(quota.label, "7d")
         XCTAssertEqual(quota.remainingPercent, 94)
-        XCTAssertEqual(quota.source, .appServer)
-        XCTAssertEqual(quota.fetchedAt, fetchedAt)
     }
 
     func testAppServerClassifiesWindowsByDurationNotSlot() throws {
@@ -236,30 +184,6 @@ final class PetIslandTests: XCTestCase {
         )
     }
 
-    func testQuotaCacheRejectsExpiredCycle() throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("codex-quota-cache-\(UUID().uuidString)")
-        let url = directory.appendingPathComponent("quota.json")
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let cache = CodexQuotaCache(url: url)
-        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
-        cache.save(QuotaSnapshot(
-            label: "7d",
-            remainingPercent: 50,
-            resetsAt: Date(timeIntervalSince1970: 1_800_010_000),
-            fetchedAt: fetchedAt,
-            source: .appServer
-        ))
-
-        XCTAssertEqual(
-            cache.load(now: fetchedAt.addingTimeInterval(60))?.source,
-            .cache
-        )
-        XCTAssertNil(
-            cache.load(now: Date(timeIntervalSince1970: 1_800_020_000))
-        )
-    }
-
     func testLiveAppServerReturnsOfficialWeeklyQuota() throws {
         guard ProcessInfo.processInfo.environment[
             "CODEX_PET_ISLAND_LIVE_TEST"
@@ -269,7 +193,6 @@ final class PetIslandTests: XCTestCase {
 
         let quota = try CodexAppServerQuotaClient(timeout: 12).fetchQuota()
 
-        XCTAssertEqual(quota.source, .appServer)
         XCTAssertTrue((0 ... 100).contains(quota.remainingPercent))
         XCTAssertFalse(quota.label.isEmpty)
     }

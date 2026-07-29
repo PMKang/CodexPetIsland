@@ -36,27 +36,20 @@ final class CodexAppServerQuotaClient:
 {
     private let executableURL: URL?
     private let timeout: TimeInterval
-    private let now: @Sendable () -> Date
 
-    convenience init(
-        timeout: TimeInterval = 8,
-        now: @escaping @Sendable () -> Date = Date.init
-    ) {
+    convenience init(timeout: TimeInterval = 8) {
         self.init(
             executableURL: Self.findCodexExecutable(),
-            timeout: timeout,
-            now: now
+            timeout: timeout
         )
     }
 
     init(
         executableURL: URL?,
-        timeout: TimeInterval = 8,
-        now: @escaping @Sendable () -> Date = Date.init
+        timeout: TimeInterval = 8
     ) {
         self.executableURL = executableURL
         self.timeout = max(2, timeout)
-        self.now = now
     }
 
     func fetchQuota() throws -> QuotaSnapshot {
@@ -109,7 +102,7 @@ final class CodexAppServerQuotaClient:
         guard let result = resolved.result else {
             throw CodexQuotaError.missingRateLimits
         }
-        return try Self.parseRateLimitsResponse(result, now: now())
+        return try Self.parseRateLimitsResponse(result)
     }
 
     static func requestMessages() -> [[String: Any]] {
@@ -131,8 +124,7 @@ final class CodexAppServerQuotaClient:
     }
 
     static func parseRateLimitsResponse(
-        _ result: [String: Any],
-        now: Date = Date()
+        _ result: [String: Any]
     ) throws -> QuotaSnapshot {
         let selected: [String: Any]?
         if let byID = result["rateLimitsByLimitId"] as? [String: Any],
@@ -180,9 +172,7 @@ final class CodexAppServerQuotaClient:
                 100,
                 max(0, Int((100 - weekly.usedPercent).rounded()))
             ),
-            resetsAt: reset,
-            fetchedAt: now,
-            source: .appServer
+            resetsAt: reset
         )
     }
 

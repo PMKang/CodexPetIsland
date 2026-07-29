@@ -27,21 +27,16 @@ final class LocalCodexReader: @unchecked Sendable {
         let names = readSessionNames()
         let files = newestSessionFiles(limit: 12)
         var tasks: [PetTask] = []
-        var newestQuota: (Date, QuotaSnapshot)?
 
         for file in files {
-            guard let summary = summarize(file: file, names: names) else {
+            guard let task = summarize(file: file, names: names) else {
                 continue
             }
-            tasks.append(summary.task)
-            if let (timestamp, quota) = summary.quota,
-               newestQuota == nil || timestamp > newestQuota!.0 {
-                newestQuota = (timestamp, quota)
-            }
+            tasks.append(task)
         }
 
         return PetDashboardSnapshot(
-            quota: newestQuota?.1,
+            quota: nil,
             tasks: Array(tasks.sorted { $0.updatedAt > $1.updatedAt }.prefix(8)),
             refreshedAt: now()
         )
@@ -73,7 +68,7 @@ final class LocalCodexReader: @unchecked Sendable {
     private func summarize(
         file: URL,
         names: [String: String]
-    ) -> (task: PetTask, quota: (Date, QuotaSnapshot)?)? {
+    ) -> PetTask? {
         guard let attributes = try? fileManager.attributesOfItem(
             atPath: file.path
         ),
@@ -91,7 +86,6 @@ final class LocalCodexReader: @unchecked Sendable {
         var workingDirectory: String?
         var latestTitle: String?
         var totalTokens: Int64 = 0
-        var quota: (Date, QuotaSnapshot)?
         var lifecycleRunning: Bool?
         var isSubagent = false
 
@@ -124,12 +118,6 @@ final class LocalCodexReader: @unchecked Sendable {
             ) {
                 totalTokens = max(totalTokens, Int64(tokens))
             }
-            if let candidate = extractQuota(dictionary) {
-                let timestamp = eventTimestamp(dictionary) ?? modifiedAt
-                if quota == nil || timestamp > quota!.0 {
-                    quota = (timestamp, candidate.fetched(at: timestamp))
-                }
-            }
             if let running = extractLifecycleRunning(dictionary) {
                 lifecycleRunning = running
             }
@@ -145,17 +133,14 @@ final class LocalCodexReader: @unchecked Sendable {
         let running = lifecycleRunning
             ?? (now().timeIntervalSince(modifiedAt) <= 90)
 
-        return (
-            PetTask(
-                id: id,
-                title: title,
-                project: project,
-                totalTokens: totalTokens,
-                updatedAt: modifiedAt,
-                isRunning: running,
-                isSubagent: isSubagent
-            ),
-            quota
+        return PetTask(
+            id: id,
+            title: title,
+            project: project,
+            totalTokens: totalTokens,
+            updatedAt: modifiedAt,
+            isRunning: running,
+            isSubagent: isSubagent
         )
     }
 
@@ -238,54 +223,6 @@ final class LocalCodexReader: @unchecked Sendable {
         }
         return payload["message"] as? String
             ?? payload["text"] as? String
-    }
-
-    private func extractQuota(_ dictionary: [String: Any]) -> QuotaSnapshot? {
-        guard let limits = findDictionary(named: "rate_limits", in: dictionary)
-        else {
-            return nil
-        }
-        // Codex can emit separate quota windows for individual models/features
-        // (for example `codex_bengalfox`). The island displays the account's
-        // main Codex allowance, so an add-on event must not replace it merely
-        // because that event is newer.
-        if let limitID = limits["limit_id"] as? String,
-           limitID != "codex" {
-            return nil
-        }
-        let windows = ["secondary", "primary"].compactMap {
-            limits[$0] as? [String: Any]
-        }
-        let weekly = windows.first(where: {
-            ($0["window_minutes"] as? NSNumber)?.doubleValue ?? 0 >= 1_440
-        }) ?? windows.first
-        guard let weekly,
-              let used = (weekly["used_percent"] as? NSNumber)?.doubleValue
-        else {
-            return nil
-        }
-        let resetSeconds = (weekly["resets_at"] as? NSNumber)?.doubleValue
-        let resetDate = resetSeconds.map(Date.init(timeIntervalSince1970:))
-        return QuotaSnapshot(
-            label: "7d",
-            remainingPercent: min(100, max(0, Int((100 - used).rounded()))),
-            resetsAt: resetDate,
-            fetchedAt: now(),
-            source: .sessionLog
-        )
-    }
-
-    private func eventTimestamp(_ dictionary: [String: Any]) -> Date? {
-        guard let raw = dictionary["timestamp"] as? String else { return nil }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [
-            .withInternetDateTime,
-            .withFractionalSeconds
-        ]
-        if let date = fractional.date(from: raw) {
-            return date
-        }
-        return ISO8601DateFormatter().date(from: raw)
     }
 
     private func findDictionary(

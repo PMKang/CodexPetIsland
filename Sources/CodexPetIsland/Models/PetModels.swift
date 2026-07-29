@@ -25,38 +25,10 @@ struct PetTask: Identifiable, Equatable, Sendable {
     let isSubagent: Bool
 }
 
-enum QuotaSource: String, Codable, Equatable, Sendable {
-    case appServer
-    case sessionLog
-    case cache
-}
-
-struct QuotaSnapshot: Codable, Equatable, Sendable {
+struct QuotaSnapshot: Equatable, Sendable {
     let label: String
     let remainingPercent: Int
     let resetsAt: Date?
-    let fetchedAt: Date
-    let source: QuotaSource
-
-    func withSource(_ source: QuotaSource) -> Self {
-        Self(
-            label: label,
-            remainingPercent: remainingPercent,
-            resetsAt: resetsAt,
-            fetchedAt: fetchedAt,
-            source: source
-        )
-    }
-
-    func fetched(at date: Date) -> Self {
-        Self(
-            label: label,
-            remainingPercent: remainingPercent,
-            resetsAt: resetsAt,
-            fetchedAt: date,
-            source: source
-        )
-    }
 }
 
 struct PetDashboardSnapshot: Equatable, Sendable {
