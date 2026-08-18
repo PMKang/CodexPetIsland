@@ -23,7 +23,10 @@ struct SplitQuotaRingView: View {
         HStack(spacing: max(4, 7 * scale)) {
             providerLabel(
                 shortName: "C",
-                values: [textValue(codexWeeklyRemaining, prefix: "7d")],
+                values: [
+                    ("5h --", true),
+                    (textValue(codexWeeklyRemaining, prefix: "7d"), false)
+                ],
                 color: codexColor,
                 alignment: .trailing
             )
@@ -31,8 +34,8 @@ struct SplitQuotaRingView: View {
             providerLabel(
                 shortName: "G",
                 values: [
-                    textValue(openCodeGoFiveHourRemaining, prefix: "5h"),
-                    textValue(openCodeGoWeeklyRemaining, prefix: "7d")
+                    (textValue(openCodeGoFiveHourRemaining, prefix: "5h"), true),
+                    (textValue(openCodeGoWeeklyRemaining, prefix: "7d"), false)
                 ],
                 color: openCodeColor,
                 alignment: .leading
@@ -49,7 +52,13 @@ struct SplitQuotaRingView: View {
             halfTrack.scaleEffect(0.76)
 
             if let codexWeeklyRemaining {
-                arc(from: 0.5, value: codexWeeklyRemaining, color: codexColor, width: line)
+                arc(
+                    from: 0.5,
+                    value: codexWeeklyRemaining,
+                    color: codexColor,
+                    width: line * 0.72,
+                    scale: 0.76
+                )
             }
             if let openCodeGoFiveHourRemaining {
                 arc(from: 0, value: openCodeGoFiveHourRemaining, color: openCodeColor, width: line)
@@ -96,7 +105,7 @@ struct SplitQuotaRingView: View {
 
     private func providerLabel(
         shortName: String,
-        values: [String],
+        values: [(String, Bool)],
         color: Color,
         alignment: HorizontalAlignment
     ) -> some View {
@@ -105,8 +114,12 @@ struct SplitQuotaRingView: View {
                 .font(.system(size: max(9, 11 * scale), weight: .bold, design: .rounded))
                 .foregroundStyle(color)
             ForEach(Array(values.enumerated()), id: \.offset) { _, value in
-                Text(value)
-                    .font(.system(size: max(7, 9 * scale), weight: .semibold, design: .rounded))
+                Text(value.0)
+                    .font(.system(
+                        size: max(7, (value.1 ? 10 : 9) * scale),
+                        weight: value.1 ? .bold : .semibold,
+                        design: .rounded
+                    ))
                     .foregroundStyle(color.opacity(0.88))
             }
         }
