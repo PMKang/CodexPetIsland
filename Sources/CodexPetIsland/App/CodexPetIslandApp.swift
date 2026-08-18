@@ -1,6 +1,33 @@
 import AppKit
 import Combine
 
+final class ClipboardSecureTextField: NSSecureTextField {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isCommandPaste = modifiers == .command
+            && event.charactersIgnoringModifiers?.lowercased() == "v"
+
+        guard isCommandPaste else {
+            return super.performKeyEquivalent(with: event)
+        }
+
+        guard let value = NSPasteboard.general.string(forType: .string) else {
+            NSSound.beep()
+            return true
+        }
+
+        let editor = currentEditor()
+        let range = editor?.selectedRange
+            ?? NSRange(location: stringValue.utf16.count, length: 0)
+        stringValue = (stringValue as NSString).replacingCharacters(in: range, with: value)
+        editor?.selectedRange = NSRange(
+            location: range.location + value.utf16.count,
+            length: 0
+        )
+        return true
+    }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let preferences = PetPreferences()
@@ -8,9 +35,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var islandController: PetIslandController?
     private var statusItem: NSStatusItem?
     private var monitor: PathMonitor?
+    private var openCodeMonitor: PathMonitor?
     private var localTimer: Timer?
     private var quotaTimer: Timer?
     private var cancellables: Set<AnyCancellable> = []
+    private var activeOpenCodeKeyPanel: NSPanel?
+    private weak var activeOpenCodeKeyField: NSTextField?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -110,6 +140,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh.target = self
         menu.addItem(refresh)
 
+        let configureGo = NSMenuItem(
+            title: text("Configure OpenCode Go Key…", "配置 OpenCode Go Key…"),
+            action: #selector(configureOpenCodeGo),
+            keyEquivalent: ""
+        )
+        configureGo.target = self
+        menu.addItem(configureGo)
+
+        if OpenCodeGoKeychain.shared.read() != nil {
+            let clearGo = NSMenuItem(
+                title: text("Clear OpenCode Go Key", "清除 OpenCode Go Key"),
+                action: #selector(clearOpenCodeGo),
+                keyEquivalent: ""
+            )
+            clearGo.target = self
+            menu.addItem(clearGo)
+        }
+
         menu.addItem(.separator())
         let quit = NSMenuItem(
             title: text("Quit", "退出"),
@@ -143,6 +191,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         _ = monitor.start()
         self.monitor = monitor
+
+        let openCodeDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/share/opencode", isDirectory: true)
+        let openCodeDatabase = openCodeDirectory
+            .appendingPathComponent("opencode.db").path
+        let openCodeMonitor = PathMonitor(
+            directory: openCodeDirectory,
+            relevant: { path in
+                path == openCodeDatabase
+                    || path.hasPrefix(openCodeDatabase + "-")
+            },
+            onChange: { [weak self] in self?.store.refreshLocal() }
+        )
+        _ = openCodeMonitor.start()
+        self.openCodeMonitor = openCodeMonitor
 
         let localTimer = Timer(timeInterval: 60, repeats: true) {
             [weak self] _ in
@@ -184,6 +247,116 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func refresh() {
         preferences.reloadLocalPet()
         store.refreshAll(forceQuota: true)
+    }
+
+    @objc private func configureOpenCodeGo() {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 230),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = text("Configure OpenCode Go", "配置 OpenCode Go")
+        panel.isFloatingPanel = true
+        panel.level = .modalPanel
+
+        let content = NSView(frame: panel.contentView?.bounds ?? .zero)
+        content.autoresizingMask = [.width, .height]
+        panel.contentView = content
+
+        let title = NSTextField(labelWithString: text("Configure OpenCode Go", "配置 OpenCode Go"))
+        title.font = .boldSystemFont(ofSize: 18)
+        title.frame = NSRect(x: 24, y: 178, width: 412, height: 24)
+
+        let info = NSTextField(labelWithString: text(
+            "The key is stored only in macOS Keychain and used for the official usage API.",
+            "Key 只保存到 macOS 钥匙串，用于请求官方用量接口。"
+        ))
+        info.font = .systemFont(ofSize: 13)
+        info.textColor = .secondaryLabelColor
+        info.frame = NSRect(x: 24, y: 145, width: 412, height: 20)
+
+        let field = ClipboardSecureTextField(frame: NSRect(x: 24, y: 100, width: 412, height: 28))
+        field.placeholderString = text("Paste API key", "粘贴 API Key")
+        field.stringValue = OpenCodeGoKeychain.shared.read() ?? ""
+
+        let pasteButton = NSButton(
+            title: text("Fill from Clipboard", "从剪贴板填入"),
+            target: self,
+            action: #selector(fillOpenCodeKeyFromClipboard)
+        )
+        pasteButton.bezelStyle = .rounded
+        pasteButton.frame = NSRect(x: 24, y: 45, width: 150, height: 28)
+
+        let cancelButton = NSButton(
+            title: text("Cancel", "取消"),
+            target: self,
+            action: #selector(cancelOpenCodeKeyPanel)
+        )
+        cancelButton.bezelStyle = .rounded
+        cancelButton.frame = NSRect(x: 300, y: 45, width: 80, height: 28)
+
+        let saveButton = NSButton(
+            title: text("Save", "保存"),
+            target: self,
+            action: #selector(saveOpenCodeKeyPanel)
+        )
+        saveButton.bezelStyle = .rounded
+        saveButton.keyEquivalent = "\r"
+        saveButton.frame = NSRect(x: 380, y: 45, width: 56, height: 28)
+
+        [title, info, field, pasteButton, cancelButton, saveButton].forEach(content.addSubview)
+        activeOpenCodeKeyPanel = panel
+        activeOpenCodeKeyField = field
+        NSApp.activate(ignoringOtherApps: true)
+        panel.center()
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(field)
+        NSApp.runModal(for: panel)
+        panel.orderOut(nil)
+        activeOpenCodeKeyPanel = nil
+        activeOpenCodeKeyField = nil
+    }
+
+    @objc private func saveOpenCodeKeyPanel() {
+        guard let field = activeOpenCodeKeyField else { return }
+        let value = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        do {
+            try OpenCodeGoKeychain.shared.save(value)
+            store.refreshQuota(force: true)
+            NSApp.stopModal(withCode: .OK)
+        } catch {
+            showError(error.localizedDescription)
+        }
+    }
+
+    @objc private func cancelOpenCodeKeyPanel() {
+        NSApp.stopModal(withCode: .cancel)
+    }
+
+    @objc private func fillOpenCodeKeyFromClipboard() {
+        guard let value = NSPasteboard.general.string(forType: .string), !value.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        activeOpenCodeKeyField?.stringValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        activeOpenCodeKeyField?.window?.makeFirstResponder(activeOpenCodeKeyField)
+    }
+
+    @objc private func clearOpenCodeGo() {
+        OpenCodeGoKeychain.shared.delete()
+        store.refreshQuota(force: true)
+    }
+
+    private func showError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = text("Could not save OpenCode Go key", "保存 OpenCode Go Key 失败")
+        alert.informativeText = message
+        alert.runModal()
     }
 
     @objc private func quit() {

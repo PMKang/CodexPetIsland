@@ -37,6 +37,7 @@ final class LocalCodexReader: @unchecked Sendable {
 
         return PetDashboardSnapshot(
             quota: nil,
+            openCodeGoQuota: nil,
             tasks: Array(tasks.sorted { $0.updatedAt > $1.updatedAt }.prefix(8)),
             refreshedAt: now()
         )
@@ -135,6 +136,7 @@ final class LocalCodexReader: @unchecked Sendable {
 
         return PetTask(
             id: id,
+            source: .codex,
             title: title,
             project: project,
             totalTokens: totalTokens,

@@ -17,6 +17,7 @@ struct CodexPet: Identifiable, Equatable, Sendable {
 
 struct PetTask: Identifiable, Equatable, Sendable {
     let id: String
+    let source: AgentSource
     let title: String
     let project: String
     let totalTokens: Int64
@@ -25,14 +26,44 @@ struct PetTask: Identifiable, Equatable, Sendable {
     let isSubagent: Bool
 }
 
+enum AgentSource: String, CaseIterable, Equatable, Hashable, Sendable {
+    case codex
+    case openCodeGo
+
+    var shortLabel: String {
+        switch self {
+        case .codex: "C"
+        case .openCodeGo: "G"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .codex: "Codex"
+        case .openCodeGo: "OpenCode Go"
+        }
+    }
+}
+
 struct QuotaSnapshot: Equatable, Sendable {
     let label: String
     let remainingPercent: Int
     let resetsAt: Date?
 }
 
+struct QuotaWindow: Equatable, Sendable {
+    let usedPercent: Int
+    let resetsAt: Date?
+}
+
+struct OpenCodeGoQuotaSnapshot: Equatable, Sendable {
+    let rolling: QuotaWindow?
+    let weekly: QuotaWindow?
+}
+
 struct PetDashboardSnapshot: Equatable, Sendable {
     var quota: QuotaSnapshot?
+    var openCodeGoQuota: OpenCodeGoQuotaSnapshot?
     var tasks: [PetTask]
     var refreshedAt: Date
 
@@ -46,6 +77,7 @@ struct PetDashboardSnapshot: Equatable, Sendable {
 
     static let empty = PetDashboardSnapshot(
         quota: nil,
+        openCodeGoQuota: nil,
         tasks: [],
         refreshedAt: .distantPast
     )

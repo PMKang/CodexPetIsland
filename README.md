@@ -2,11 +2,12 @@
 
 一个独立、原生、仅本地运行的 macOS Codex 桌面宠物。
 
-它读取本机 Codex 自定义宠物与会话日志，在透明悬浮窗中展示：
+它读取本机 Codex / OpenCode 会话与自定义宠物，在透明悬浮窗中展示：
 
 - 当前本地宠物及原始精灵动画
 - Codex 周额度剩余比例与重置倒计时
-- 最近任务与运行状态
+- OpenCode Go 5 小时 / 每周用量比例与重置倒计时
+- Codex 与 OpenCode Go 的最新任务与运行状态
 - 可拖动、多显示器、屏幕边缘吸附
 - 75%～300% 宠物缩放
 - 中英文界面
@@ -14,13 +15,14 @@
 
 ## 额度来源
 
-额度只通过本机 Codex 自带的 `app-server` 查询，调用官方
-`account/rateLimits/read` RPC。不解析会话文件中的 `rate_limits`，
-也不把额度结果缓存到磁盘；官方查询失败时保留本次运行期间最后一次
-成功结果，应用重新启动后若仍无法查询则显示 `--`。
+Codex 额度通过本机 Codex 自带的 `app-server` 查询，调用官方
+`account/rateLimits/read` RPC。OpenCode Go 额度通过官方
+`https://opencode.ai/zen/go/v1/usage` 查询，Key 由用户在菜单中输入并
+保存到 macOS Keychain。两者都不解析会话文件中的额度字段，也不把额度
+结果缓存到磁盘；查询失败时保留当前运行期间最后一次成功结果。
 
-应用启动和手动刷新时会查询官方额度，常驻期间每 5 分钟查询一次。
-会话文件变化只刷新任务和 Token 信息，不会高频启动 `app-server`。
+应用启动和手动刷新时查询官方额度，常驻期间每 5 分钟查询一次。会话
+文件或 OpenCode SQLite 数据库变化只刷新任务，不会高频请求额度接口。
 
 ## 可选 subagent 形态
 
@@ -45,10 +47,11 @@ spritesheet 的 `running` 行。
 - `~/.codex/pets/*/pet.json`
 - `~/.codex/sessions/**/*.jsonl`
 - `~/.codex/session_index.jsonl`
+- `~/.local/share/opencode/opencode.db`
 
-应用不读取 `auth.json`，不上传提示词，也不修改宠物资源。额度查询通过
-本机 Codex 自带的 `app-server` 完成；宠物岛本身不读取或传递访问令牌，
-但 `app-server` 会使用 Codex 已有登录状态向其服务端刷新账户额度。
+应用不读取 OpenCode `auth.json`，不上传提示词，也不修改宠物资源。
+OpenCode Go Key 只从 macOS Keychain 读取，并仅作为官方用量接口的
+Bearer 凭据使用。
 
 ## 开发
 

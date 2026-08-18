@@ -184,6 +184,20 @@ final class PetIslandTests: XCTestCase {
         )
     }
 
+    func testParsesOpenCodeGoUsageWindows() throws {
+        let snapshot = try OpenCodeGoQuotaClient.parse(
+            data: Data(
+                """
+                {"usage":{"rolling":{"status":"ok","percent":23,"resetsAt":"2026-08-18T06:15:58.044Z"},"weekly":{"status":"ok","percent":20,"resetsAt":"2026-08-24T00:00:00.044Z"},"monthly":{"status":"ok","percent":10,"resetsAt":"2026-09-17T16:34:11.044Z"}}}
+                """.utf8
+            )
+        )
+
+        XCTAssertEqual(snapshot.rolling?.usedPercent, 23)
+        XCTAssertEqual(snapshot.weekly?.usedPercent, 20)
+        XCTAssertNotNil(snapshot.rolling?.resetsAt)
+    }
+
     func testLiveAppServerReturnsOfficialWeeklyQuota() throws {
         guard ProcessInfo.processInfo.environment[
             "CODEX_PET_ISLAND_LIVE_TEST"

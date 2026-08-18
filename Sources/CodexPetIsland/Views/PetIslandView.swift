@@ -95,7 +95,7 @@ struct PetIslandView: View {
     private var collapsedSummary: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(primaryTaskTitle)
+                Text("\(primarySourceLabel) \(primaryTaskTitle)")
                     .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
                 HStack(spacing: 8) {
@@ -111,7 +111,7 @@ struct PetIslandView: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
-            usageRing
+            splitQuotaRing
         }
         .padding(.horizontal, 13)
         .frame(width: 306, height: 66)
@@ -141,7 +141,7 @@ struct PetIslandView: View {
                     .frame(width: 34, height: 34)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(text("Codex tasks", "Codex 任务"))
+                Text(text("Agent tasks", "Agent 任务"))
                         .font(.system(size: 14, weight: .semibold))
                     Text(taskSummary)
                         .font(.system(size: 11))
@@ -219,7 +219,7 @@ struct PetIslandView: View {
                 }
                 .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 3) {
-                Text(task.title)
+                Text("[\(task.source.shortLabel)] \(task.title)")
                     .font(.system(size: 12, weight: .semibold))
                     .lineLimit(2)
                 Text(
@@ -242,27 +242,13 @@ struct PetIslandView: View {
     private var dockedPet: some View {
         VStack(spacing: -6 * scale) {
             ZStack {
-                Circle()
-                    .stroke(
-                        Color.secondary.opacity(0.14),
-                        lineWidth: 5 * scale
-                    )
-                Circle()
-                    .trim(from: 0, to: CGFloat(remainingPercent) / 100)
-                    .stroke(
-                        Color.green,
-                        style: StrokeStyle(
-                            lineWidth: 5 * scale,
-                            lineCap: .round
-                        )
-                    )
-                    .rotationEffect(.degrees(-90))
+                splitQuotaRing
                 pet
                     .frame(width: 50 * scale, height: 56 * scale)
             }
             .frame(width: 82 * scale, height: 82 * scale)
 
-            Text("\(percentText) · \(countdownText)")
+            Text("\(primaryQuotaText) · \(countdownText)")
                 .font(.system(
                     size: 11 * scale,
                     weight: .bold,
@@ -389,20 +375,13 @@ struct PetIslandView: View {
         .background(.quaternary.opacity(0.65), in: RoundedRectangle(cornerRadius: 11))
     }
 
-    private var usageRing: some View {
-        ZStack {
-            Circle().stroke(Color.secondary.opacity(0.16), lineWidth: 4)
-            Circle()
-                .trim(from: 0, to: CGFloat(remainingPercent) / 100)
-                .stroke(
-                    Color.green,
-                    style: StrokeStyle(lineWidth: 4, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-            Text("\(remainingPercent)")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-        }
-        .frame(width: 38, height: 38)
+    private var splitQuotaRing: some View {
+        SplitQuotaRingView(
+            codexWeeklyRemaining: store.snapshot.quota?.remainingPercent,
+            openCodeGoFiveHourUsed: store.snapshot.openCodeGoQuota?.rolling?.usedPercent,
+            openCodeGoWeeklyUsed: store.snapshot.openCodeGoQuota?.weekly?.usedPercent,
+            scale: isDocked ? scale : 1
+        )
     }
 
     private var remainingPercent: Int {
@@ -413,16 +392,38 @@ struct PetIslandView: View {
         store.snapshot.quota.map { "\($0.remainingPercent)%" } ?? "--"
     }
 
+    private var primaryQuotaText: String {
+        if primaryTask?.source == .openCodeGo,
+           let percent = store.snapshot.openCodeGoQuota?.rolling?.usedPercent {
+            return "\(percent)%"
+        }
+        return percentText
+    }
+
     private var countdownText: String {
-        guard let reset = store.snapshot.quota?.resetsAt else { return "--" }
+        let reset: Date?
+        if primaryTask?.source == .openCodeGo {
+            reset = store.snapshot.openCodeGoQuota?.rolling?.resetsAt
+        } else {
+            reset = store.snapshot.quota?.resetsAt
+        }
+        guard let reset else { return "--" }
         let days = max(0, Int(ceil(reset.timeIntervalSinceNow / 86_400)))
         return preferences.language == .chinese ? "\(days)天" : "\(days)d"
     }
 
     private var primaryTaskTitle: String {
-        runningTasks.first?.title
-            ?? store.snapshot.tasks.first?.title
+        primaryTask?.title
             ?? text("Codex is resting", "Codex 正在休息")
+    }
+
+    private var primaryTask: PetTask? {
+        runningTasks.first
+            ?? store.snapshot.tasks.sorted { $0.updatedAt > $1.updatedAt }.first
+    }
+
+    private var primarySourceLabel: String {
+        primaryTask?.source.shortLabel ?? "C"
     }
 
     private var taskSummary: String {
