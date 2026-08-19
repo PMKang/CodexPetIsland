@@ -248,16 +248,6 @@ struct PetIslandView: View {
             }
             .frame(width: 82 * scale, height: 82 * scale)
 
-            Text("\(primaryQuotaText) · \(countdownText)")
-                .font(.system(
-                    size: 11 * scale,
-                    weight: .bold,
-                    design: .rounded
-                ))
-                .monospacedDigit()
-                .padding(.horizontal, 9 * scale)
-                .frame(height: 24 * scale)
-                .background(.regularMaterial, in: Capsule())
         }
         .frame(width: size.width, height: size.height)
         .contentShape(Circle())
@@ -380,7 +370,11 @@ struct PetIslandView: View {
             codexWeeklyRemaining: store.snapshot.quota?.remainingPercent,
             openCodeGoFiveHourUsed: store.snapshot.openCodeGoQuota?.rolling?.usedPercent,
             openCodeGoWeeklyUsed: store.snapshot.openCodeGoQuota?.weekly?.usedPercent,
-            scale: isDocked ? scale : 1
+            codexWeeklyResetsAt: store.snapshot.quota?.resetsAt,
+            openCodeGoFiveHourResetsAt: store.snapshot.openCodeGoQuota?.rolling?.resetsAt,
+            openCodeGoWeeklyResetsAt: store.snapshot.openCodeGoQuota?.weekly?.resetsAt,
+            scale: isDocked ? scale : 1,
+            docked: isDocked
         )
     }
 

@@ -10,7 +10,7 @@ enum PetDockEdge: Equatable {
 struct PetIslandPlacement {
     static let baseFloating = NSSize(width: 324, height: 132)
     static let baseExpanded = NSSize(width: 410, height: 380)
-    static let baseDocked = NSSize(width: 104, height: 112)
+    static let baseDocked = NSSize(width: 176, height: 92)
     static func visualScale(
         baseScale: CGFloat,
         subagentScaleMultiplier: Double?,

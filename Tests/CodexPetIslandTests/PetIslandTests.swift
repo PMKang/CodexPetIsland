@@ -60,7 +60,7 @@ final class PetIslandTests: XCTestCase {
 
         XCTAssertEqual(floating, NSSize(width: 324, height: 288))
         XCTAssertEqual(expanded, NSSize(width: 410, height: 536))
-        XCTAssertEqual(docked, NSSize(width: 312, height: 336))
+        XCTAssertEqual(docked, NSSize(width: 528, height: 276))
     }
 
     func testConfiguredSubagentFormScalesWithoutChangingDockedSize() {
