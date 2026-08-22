@@ -42,14 +42,6 @@ enum PetAnimationState: Equatable {
         }
     }
 
-    var frameInterval: TimeInterval {
-        switch self {
-        case .idle: 0.28
-        case .runningLeft, .runningRight, .taskRunning,
-             .taskRunningLeft, .taskRunningRight: 0.12
-        }
-    }
-
     var taskRunningDirection: PetDockEdge? {
         switch self {
         case .taskRunningLeft: .left
@@ -81,43 +73,42 @@ struct PetSpriteView: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: state.frameInterval)) { context in
-            let tick = Int(
-                context.date.timeIntervalSinceReferenceDate
-                    / state.frameInterval
-            )
-            if showsSubagentForm, let subagentImage {
-                Image(nsImage: subagentImage)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-                    .offset(
-                        x: directionalStride(tick: tick),
-                        y: directionalBounce(tick: tick)
-                    )
-                    .rotationEffect(
-                        .degrees(directionalLean),
-                        anchor: .bottom
-                    )
-            } else if let image {
-                spriteSheet(image, frame: tick % state.frameCount)
-                    .offset(
-                        x: directionalStride(tick: tick),
-                        y: directionalBounce(tick: tick)
-                    )
-                    .rotationEffect(
-                        .degrees(directionalLean),
-                        anchor: .bottom
-                    )
-            } else {
-                Image(systemName: "pawprint.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .padding(12)
-                    .foregroundStyle(.secondary)
-            }
-        }
+        spriteContent(tick: 0)
         .accessibilityLabel("\(pet.displayName) Codex pet")
+    }
+
+    @ViewBuilder
+    private func spriteContent(tick: Int) -> some View {
+        if showsSubagentForm, let subagentImage {
+            Image(nsImage: subagentImage)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .offset(
+                    x: directionalStride(tick: tick),
+                    y: directionalBounce(tick: tick)
+                )
+                .rotationEffect(
+                    .degrees(directionalLean),
+                    anchor: .bottom
+                )
+        } else if let image {
+            spriteSheet(image, frame: tick % state.frameCount)
+                .offset(
+                    x: directionalStride(tick: tick),
+                    y: directionalBounce(tick: tick)
+                )
+                .rotationEffect(
+                    .degrees(directionalLean),
+                    anchor: .bottom
+                )
+        } else {
+            Image(systemName: "pawprint.fill")
+                .resizable()
+                .scaledToFit()
+                .padding(12)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func directionalStride(tick: Int) -> CGFloat {
